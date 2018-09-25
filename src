@@ -1,0 +1,152 @@
+ #include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include<Stepper.h>
+
+
+// Update these with values suitable for your network.
+
+
+
+const char* ssid = "don";
+//const char* password = "hellobeard";
+const char* mqtt_server = "iot.eclipse.org";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+long lastMsg = 0;
+char msg[50];
+int value = 0;
+
+const int stepsPerRevolution = 600;  // change this to fit the number of steps per revolution
+                                     // for your motor
+ 
+// initialize the stepper library on pins 8 through 11:
+Stepper myStepper(stepsPerRevolution, 14,12,13,15);            
+
+
+
+//Garage door state global variables
+boolean reachTop = false;
+boolean reachBottom = false;
+boolean prevDoublePress = false;
+int currentTime = 0;
+int prevTime = 0;
+
+void setup_wifi() {
+
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("light")) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      // ... and resubscribe
+      client.subscribe("Sebastian/light");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  int val = 0;
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  } 
+  if (strcmp(topic,"Sebastian/light")==0){  
+
+    currentTime = getCurrentTime();
+
+    int changeInTime = currenTime - prevTime;
+    
+    if( changeInTime < 500 ){
+      prevDoublePress = true;
+      //Handle double press: Going to set a boolean previousDoublePress to true
+      //Going to stop the stepper motor 
+    }
+    else{
+      if(prevDoublePress && !reachTop && !reachBottom){
+          if (payload[0] == '1'){
+            int revolutions = 0;
+            while(!reachTop){
+              stepClockwise();
+              revolutions++;       
+              if(revolutions == (INDICATE_REACH_TOP - revolutions)){
+                reachTop = true;  
+              }
+              
+            }
+          }
+          else{
+            int revolutions = 0;
+            while(!reachBottom){
+              stepCounterClockwise();
+              revolutions++;
+              if(revolutions == INDICATE_REACH_BOTTOM){
+                reachBottom = true;  
+              }
+           
+            }
+              
+          }      
+      }
+      else if(reachTop && payload[0]== '1'){}
+      else if(reachBottom && payload[0]== '0'){}
+      else{
+        if(payload[0]== '1'){
+          stepClockwise();
+        }
+        if(payload[0]== '0'){
+          stepCounterClockwise()
+        };  
+      }
+    }
+    prevTime = currentTime;
+  }    
+}
+
+
+void setup() {
+     // Initializer
+    myStepper.setSpeed(40);
+  Serial.begin(115200);
+  setup_wifi(); 
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+  client.subscribe("Sebastian/#");
+}
+
+void loop() {  
+  
+ 
+
+  
+}
